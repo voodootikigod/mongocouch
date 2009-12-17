@@ -1,0 +1,36 @@
+#!/usr/bin/env ruby
+require 'rubygems'
+require 'mongo'
+require 'couchrest'
+require 'pp'
+
+
+
+database = ARGV[0]
+
+@couchdb = CouchRest.new("http://127.0.0.1:5984")
+@connection = Mongo::Connection.new("localhost")
+#mongo doesn't support revision upgrade replication, so we have to drop and reload from the CouchDB
+@connection.drop_database(database)
+@mongodb = @connection.db(database)
+
+
+databases = @couchdb.databases.collect{|a| a.indexOf(database) == 0 }
+databases.each{|db|
+  @collection = @mongodb.collection(db.gsub("#{database}_",""))
+  @db = @couchdb.db(db)
+  rows = @db.documents["rows"]
+  puts "Porting #{rows.length} documents from couchdb:#{database}_#{db} to mongodb:#{database}/#{db}"
+  rows.each{|doc_id|
+    oid_str = doc_id["id"]
+    doc = @db.get(oid_str)
+    doc["_id"] = Mongo::ObjectID.legal?(oid_str) ? Mongo::ObjectID.from_string(oid_str) : oid_str
+    doc.delete("_rev")
+    begin
+      @collection.insert(doc)
+    rescue => e
+      pp doc
+    end
+  }
+  end
+}

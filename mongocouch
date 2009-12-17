@@ -1,0 +1,29 @@
+#!/usr/bin/env ruby
+require 'rubygems'
+require 'mongo'
+require 'couchrest'
+require 'pp'
+
+
+
+database = ARGV[0]
+
+
+@mongodb = Mongo::Connection.new("localhost").db(database)
+collections = @mongodb.collection_names
+collections.each{|collection|
+  if collection != "system.indexes"
+    @collection = @mongodb.collection(collection)
+    puts "Porting #{@collection.count()} documents from mongodb:#{database}/#{collection} to couchdb:#{database}_#{collection}"
+    @db = CouchRest.database!("http://127.0.0.1:5984/#{database}_#{collection}")
+    @collection.find().each{|doc|
+      new_doc = doc
+      new_doc["_id"] = doc["_id"].to_s
+      begin
+        @db.save_doc(doc)  
+      rescue RestClient::RequestFailed=>e
+        pp doc
+      end
+    }
+  end
+}
